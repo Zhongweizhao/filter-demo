@@ -17,6 +17,12 @@ noisy input.
 - A **Calibrate JE** button in the bottom-left controls. The Jitter-Energy
   filter has two parameters that depend on the input device's noise scale
   (`magnitudeThreshold`, `energyCeiling`); calibration sets them automatically.
+- **Scripted circular motion** in the Input panel. When the mouse is freehand
+  it's hard to control the per-frame motion delta precisely, so the win
+  condition for JE (motion speed ≈ jitter speed) is hard to reproduce.
+  Toggle scripted motion and tune amplitude/frequency until the motion
+  per-frame delta is comparable to σ_d — there 1€ either lags or lets jitter
+  through, while a calibrated JE tracks the motion smoothly.
 
 ## How calibration works
 

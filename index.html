@@ -181,7 +181,7 @@
 					this.ref('y', 0);
 					this.ref('noisyX', 0);
 					this.ref('noisyY', 0);
-					
+
 					// State variables
 					this.ref('SNR', 50);
 					this.SNR$subscribe(this.updateNoiseFunction.bind(this));
@@ -189,15 +189,48 @@
 					this.stopped$subscribe(this.updateTimer.bind(this));
 					this.ref('frequency', 25);
 					this.frequency$subscribe(this.updateTimer.bind(this));
-					
+
+					// Scripted-motion state. When enabled, the input x/y is generated
+					// by a circular sinusoid instead of the mouse, so motion speed can
+					// be dialled in to match the noise's per-frame delta scale.
+					this.ref('scripted', false);
+					this.ref('scriptedAmp', 100);   // pixels
+					this.ref('scriptedFreq', 0.3);  // Hz
+					this.scriptedT0 = (new Date().getTime()) * 0.001;
+
 					// Setup the SNR setting in the configurator
 					var $SNRsetting = $('<span>SNR (dB): <span class="tanglify_value"/></span>').append('<input type="number" class="tanglify_value"/>,<input type="range" class="tanglify_value"/>').append('<input type="button" value="reset" class="tanglify_reset" />').tanglify({
 						updateFn: function(x) {
 							that.SNR = x;
 						}
 					});
+
+					// Scripted-motion controls
+					var $scriptedToggle = $('<label><input type="checkbox" id="scriptedMotion"/> Scripted circular motion</label>');
+					$scriptedToggle.find('input').on('change', function() {
+						that.scripted = this.checked;
+						that.scriptedT0 = (new Date().getTime()) * 0.001;
+					});
+					var $ampSetting = $('<span>Motion amp (px): <span class="tanglify_value"/></span>').append('<input type="number" class="tanglify_value"/>,<input type="range" class="tanglify_value"/>').append('<input type="button" value="reset" class="tanglify_reset" />').tanglify({
+						min: 0, max: 400, step: 1, defaultValue: 100,
+						updateFn: function(x) { that.scriptedAmp = x; }
+					});
+					var $freqSetting = $('<span>Motion freq (Hz): <span class="tanglify_value"/></span>').append('<input type="number" class="tanglify_value"/>,<input type="range" class="tanglify_value"/>').append('<input type="button" value="reset" class="tanglify_reset" />').tanglify({
+						min: 0.01, max: 3, step: 0.01, defaultValue: 0.3,
+						updateFn: function(x) { that.scriptedFreq = x; }
+					});
+
 					//configurator dom
-					this.$configurator.append($('<h1/>').text('Input')).append($('<h2><span style="background-color: black">&nbsp;</span> Signal</h2><h2><span style="background-color: #EEE">&nbsp;</span> Noisy signal</h2>')).append($('<ul/>').append($('<li/>').append($SNRsetting))).append($('<h1/>').text('Filters'));
+					this.$configurator
+						.append($('<h1/>').text('Input'))
+						.append($('<h2><span style="background-color: black">&nbsp;</span> Signal</h2><h2><span style="background-color: #EEE">&nbsp;</span> Noisy signal</h2>'))
+						.append($('<ul/>')
+							.append($('<li/>').append($SNRsetting))
+							.append($('<li/>').append($scriptedToggle))
+							.append($('<li/>').append($ampSetting))
+							.append($('<li/>').append($freqSetting))
+						)
+						.append($('<h1/>').text('Filters'));
 					
 					// Setup the filters
 					this.colors = ["#ff5252", "#ff9752", "#0fa5f2", "#0ebb52", "#920bfe", "#52f3ff", "#52c5a", "#5297ff", "#6952ff", "#ff52f3", "#ff5280", "#ff8052", "#ffae52", "#fff352", "#52ff52", "#52ffdc", "#52dcff", "#52aeff", "#5280ff", "#c552ff", "#a52ae"];
@@ -264,6 +297,15 @@
 					}
 				}
 				FilterDemo.prototype.tick = function() {
+					if(this.scripted) {
+						var t = (new Date().getTime()) * 0.001 - this.scriptedT0;
+						var w = this.$playground.width();
+						var h = this.$playground.height();
+						var cx = w * 0.5, cy = h * 0.5;
+						var omega = 2 * Math.PI * this.scriptedFreq;
+						this.x = cx + this.scriptedAmp * Math.cos(omega * t);
+						this.y = cy + this.scriptedAmp * Math.sin(omega * t);
+					}
 					this.updateNoise();
 					this.update();
 				}
