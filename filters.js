@@ -236,7 +236,7 @@
 		{ name: 'magnitudeThreshold', description: 'Magnitude threshold (px)', min: 0.1, max: 200, def: 25, step: 0.1 },
 		{ name: 'energyGain', description: 'Energy gain', min: 0.1, max: 50, def: 5.0, step: 0.1 },
 		{ name: 'decayFactor', description: 'Decay factor', min: 0.5, max: 0.999, def: 0.99, step: 0.001 },
-		{ name: 'fcMin', description: 'fc min', min: 0.1, max: 10, def: 0.3, step: 0.05 },
+		{ name: 'fcMin', description: 'fc min', min: 0.05, max: 10, def: 0.15, step: 0.05 },
 		{ name: 'fcMax', description: 'fc max', min: 1.0, max: 50, def: 15.0, step: 0.1 },
 		{ name: 'energyCeiling', description: 'Energy ceiling', min: 0.01, max: 50000, def: 500, step: 1 }
 	];
@@ -266,7 +266,12 @@
 		}
 
 		if(this.E > this.energyCeiling) this.E = this.energyCeiling;
-		var blend = this.E / this.energyCeiling;
+		// Snap to full saturation once E is within 15% of ceiling. The energy
+		// accumulator naturally fluctuates around its mean (decay loses 1%/frame
+		// every no-reversal frame), and the quadratic blend amplifies small
+		// dips in E into spikes in fc — this snap eliminates the leakage.
+		var raw = this.E / this.energyCeiling;
+		var blend = raw > 0.85 ? 1.0 : (raw / 0.85);
 		blend = blend * blend;
 
 		var fc = this.fcMax - (this.fcMax - this.fcMin) * blend;

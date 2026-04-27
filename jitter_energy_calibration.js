@@ -192,14 +192,39 @@
 			$btn.on('click', function() { startCalibration($status); });
 			$wrap.append($btn).append($status);
 			$wrap.append($('<div/>').css({'margin-top': '4px', 'color': '#aaa', 'font-size': '9px'}).text('Auto-calibrated from SNR on load. Manual button uses live samples.'));
+
+			// Live state readout — shows current JE energy, blend (saturation %)
+			// and effective cutoff so it's obvious whether JE is saturated.
+			var $diag = $('<div class="je-diag" />').css({'margin-top': '4px', 'color': '#9d9', 'font-size': '10px', 'font-family': 'monospace'}).text('');
+			$wrap.append($diag);
 			$det.append($wrap);
 
-			// Auto-calibrate now and whenever SNR changes. The latter keeps JE
-			// well-tuned as the user explores different noise levels.
 			autoCalibrate($status);
 			if(window.filterDemo && window.filterDemo.SNR$subscribe) {
 				window.filterDemo.SNR$subscribe(function() { autoCalibrate($status); });
 			}
+
+			// Refresh the live readout 5×/sec.
+			setInterval(function() {
+				var fs = jeFilters();
+				if(fs.length === 0) { $diag.text(''); return; }
+				var f = fs[0];
+				if(!f.filterX) return;
+				var fx = f.filterX;
+				var ceiling = fx.energyCeiling;
+				var E = fx.E;
+				var blend = E / ceiling;
+				if(blend > 1) blend = 1;
+				var blendSq = blend * blend;
+				var fc = fx.fcMax - (fx.fcMax - fx.fcMin) * blendSq;
+				$diag.text(
+					'JE: thresh=' + fx.magnitudeThreshold.toFixed(1) +
+					' ceil=' + ceiling.toFixed(0) +
+					' E=' + E.toFixed(0) +
+					' blend²=' + blendSq.toFixed(2) +
+					' fc=' + fc.toFixed(2) + 'Hz'
+				);
+			}, 200);
 		}, 100);
 	});
 })();
