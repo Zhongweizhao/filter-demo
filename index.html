@@ -183,7 +183,10 @@
 					this.ref('noisyY', 0);
 
 					// State variables
-					this.ref('SNR', 50);
+					// Defaults are tuned for the JE-vs-1€ comparison: SNR low enough
+					// for visibly noisy input, scripted slow circular motion whose
+					// per-frame delta is matched to the noise's per-frame delta.
+					this.ref('SNR', 40);
 					this.SNR$subscribe(this.updateNoiseFunction.bind(this));
 					this.ref('stopped', false);
 					this.stopped$subscribe(this.updateTimer.bind(this));
@@ -193,30 +196,31 @@
 					// Scripted-motion state. When enabled, the input x/y is generated
 					// by a circular sinusoid instead of the mouse, so motion speed can
 					// be dialled in to match the noise's per-frame delta scale.
-					this.ref('scripted', false);
-					this.ref('scriptedAmp', 100);   // pixels
-					this.ref('scriptedFreq', 0.3);  // Hz
+					this.ref('scripted', true);
+					this.ref('scriptedAmp', 180);   // pixels
+					this.ref('scriptedFreq', 0.19); // Hz — peak Δ ≈ 8.6 px/frame at 25 Hz
 					this.scriptedT0 = (new Date().getTime()) * 0.001;
 
 					// Setup the SNR setting in the configurator
 					var $SNRsetting = $('<span>SNR (dB): <span class="tanglify_value"/></span>').append('<input type="number" class="tanglify_value"/>,<input type="range" class="tanglify_value"/>').append('<input type="button" value="reset" class="tanglify_reset" />').tanglify({
+						defaultValue: 40,
 						updateFn: function(x) {
 							that.SNR = x;
 						}
 					});
 
 					// Scripted-motion controls
-					var $scriptedToggle = $('<label><input type="checkbox" id="scriptedMotion"/> Scripted circular motion</label>');
+					var $scriptedToggle = $('<label><input type="checkbox" id="scriptedMotion" checked/> Scripted circular motion</label>');
 					$scriptedToggle.find('input').on('change', function() {
 						that.scripted = this.checked;
 						that.scriptedT0 = (new Date().getTime()) * 0.001;
 					});
 					var $ampSetting = $('<span>Motion amp (px): <span class="tanglify_value"/></span>').append('<input type="number" class="tanglify_value"/>,<input type="range" class="tanglify_value"/>').append('<input type="button" value="reset" class="tanglify_reset" />').tanglify({
-						min: 0, max: 400, step: 1, defaultValue: 100,
+						min: 0, max: 400, step: 1, defaultValue: 180,
 						updateFn: function(x) { that.scriptedAmp = x; }
 					});
 					var $freqSetting = $('<span>Motion freq (Hz): <span class="tanglify_value"/></span>').append('<input type="number" class="tanglify_value"/>,<input type="range" class="tanglify_value"/>').append('<input type="button" value="reset" class="tanglify_reset" />').tanglify({
-						min: 0.01, max: 3, step: 0.01, defaultValue: 0.3,
+						min: 0.01, max: 3, step: 0.01, defaultValue: 0.19,
 						updateFn: function(x) { that.scriptedFreq = x; }
 					});
 
@@ -237,22 +241,28 @@
 					var keys = ['s','d','f','g','h','j','k','l'];
 					this.filters = [];
 					var c = 0;
+					// Default-on filters for the JE-vs-1€ showcase. The user can
+					// re-enable the others via their checkboxes / shortcut keys.
+					var defaultEnabled = { OneEuroFilter: true, JitterEnergyFilter: true };
 					for(var i in Filters) {
 						var f = Filters[i];
 						var filter = new FilterConfiguration(i, this.colors[c++], c, keys[c-1]);
 						this.filters.push(filter);
 						this.$playground.append(filter.$cursor);
 						this.$configurator.append(filter.$configurator);
-						$('#' + i).find('input').trigger('click');						
+						if(defaultEnabled[i]) {
+							$('#' + i).find('input').trigger('click');
+						}
 					}
 
 					// Setup the noise function
 					this.updateNoiseFunction();
 					$(window).resize(this.updateNoiseFunction);
 					
-					// Setup the pointer input
+					// Setup the pointer input. Mouse drives x/y unless scripted
+					// motion is on (in which case the tick overrides).
 					this.$playground.mousemove(function(e) {
-						if(!that.stopped) {
+						if(!that.stopped && !that.scripted) {
 							that.x = e.pageX - that.$playground.offset().left;
 							that.y = e.pageY - that.$playground.offset().top;
 						}

@@ -139,8 +139,35 @@
 		return Math.sqrt(s / Math.max(n - 1, 1));
 	}
 
+	// Analytical calibration. The demo's noise function is gaussian with known
+	// std (derived from SNR + playground size), so we can compute σ_d directly
+	// without sampling. Used for auto-calibration on startup and on SNR change.
+	function analyticalSigmaD(demo) {
+		var w = demo.$playground.width();
+		var h = demo.$playground.height();
+		var maxDim = Math.max(w, h);
+		var sigmaNoise = maxDim / Math.pow(10, demo.SNR / 20);
+		return sigmaNoise * Math.sqrt(2);
+	}
+
+	function gaussSample() {
+		var u = Math.random() || 1e-9, v = Math.random();
+		return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+	}
+
+	function autoCalibrate($status) {
+		if(!window.filterDemo) return;
+		var demo = window.filterDemo;
+		var sigmaD = analyticalSigmaD(demo);
+		// Generate synthetic delta samples to feed the empirical accumulator —
+		// keeps the steady-state estimation logic identical to the manual path.
+		var n = 240, fakeX = new Array(n), fakeY = new Array(n);
+		for(var i = 0; i < n; ++i) { fakeX[i] = sigmaD * gaussSample(); fakeY[i] = sigmaD * gaussSample(); }
+		applyToAllJE(sigmaD, fakeX, fakeY);
+		if($status) $status.text('auto-calibrated: σ_d=' + sigmaD.toFixed(2) + ' px (from SNR)');
+	}
+
 	$(function() {
-		// Wait until filterDemo and configurator are built.
 		setTimeout(function() {
 			var $det = $('#det');
 			if($det.length === 0) return;
@@ -152,18 +179,25 @@
 				'color': 'white',
 				'font-size': '10px'
 			});
-			var $btn = $('<button type="button">Calibrate JE (2s)</button>').css({
+			var $btn = $('<button type="button">Calibrate JE (2s, hold still)</button>').css({
 				'font-size': '10px',
 				'cursor': 'pointer'
 			});
 			var $status = $('<span class="je-status" />').css({
 				'margin-left': '6px',
 				'color': '#ddd'
-			}).text('hold mouse still & click');
+			}).text('');
 			$btn.on('click', function() { startCalibration($status); });
 			$wrap.append($btn).append($status);
-			$wrap.append($('<div/>').css({'margin-top': '4px', 'color': '#aaa', 'font-size': '9px'}).text('Sets magnitudeThreshold ≈ 3σ_d and energyCeiling = σ_d²·gain·0.5/(1−decay)'));
+			$wrap.append($('<div/>').css({'margin-top': '4px', 'color': '#aaa', 'font-size': '9px'}).text('Auto-calibrated from SNR on load. Manual button uses live samples.'));
 			$det.append($wrap);
-		}, 50);
+
+			// Auto-calibrate now and whenever SNR changes. The latter keeps JE
+			// well-tuned as the user explores different noise levels.
+			autoCalibrate($status);
+			if(window.filterDemo && window.filterDemo.SNR$subscribe) {
+				window.filterDemo.SNR$subscribe(function() { autoCalibrate($status); });
+			}
+		}, 100);
 	});
 })();

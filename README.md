@@ -4,8 +4,14 @@ Fork of the [1€ Filter interactive demo](https://gery.casiez.net/1euro/Interac
 that adds the **Jitter-Energy Adaptive Filter** alongside the original filters
 (moving average, single exponential, double exponential, Kalman, 1€).
 
-Move the mouse over the playground to compare how each filter handles the
-noisy input.
+Defaults are curated for the JE-vs-1€ comparison: only those two filters
+are enabled, scripted slow circular motion is on, SNR is set so the noise
+is visible, and the scripted motion's per-frame delta is matched to the
+noise's per-frame delta. JE is auto-calibrated on load and every time SNR
+changes.
+
+You can re-enable other filters via their checkboxes (or shortcut keys),
+turn off scripted motion to drive with the mouse, and tune any slider.
 
 ## What's new
 
