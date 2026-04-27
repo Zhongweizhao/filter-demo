@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>1€ + Jitter-Energy Filter Demo</title>
+		<meta charset="utf-8" />
+		<script src="sylvester.js"></script>
+		<script src="jquery.js"></script>
+		<script src="filters.js"></script>
+		<script src="noise.js"></script>
+		<script src="dollardollardollardollar.js"></script>
+		<script src="tangueul.js"></script>
+		<script src="d3.min.js"></script>
+		<script src="d3.layout.min.js"></script>
+		<script src="rickshaw.min.js"></script>
+		<script src="util.js"></script>
+		<script src="touchtomouse.js"></script>
+		<script src="jitter_energy_calibration.js"></script>
+		<link rel="stylesheet" href="tangueul.css" type="text/css"/>
+		<script>
+			$(function() {
+				
+				function construct(constructor, args) {
+				    function F() {
+				        return constructor.apply(this, args);
+				    }
+				    F.prototype = constructor.prototype;
+				    return new F();
+				}
+				
+				function FilterConfiguration(name, color, size, kbdletter) {
+					var that = this;
+					
+					this.name = name;
+					this.color = color;
+					this.filterClass = Filters[name];
+					
+					this.filterX = undefined;
+					this.filterY = undefined;
+					this.timer = undefined;
+					
+					this.ref('currentX', 0);
+					this.ref('currentY', 0);
+					
+					this.$cursor = $('<div/>').addClass('filterCursor').attr('id', 'cursor_'+this.name).addClass('filtered_cursor').css('border-color', color).css('color', color).append($('<span/>').text(this.filterClass.description));
+					$('span', this.$cursor).css({
+						top: (Math.sin(size * 1.0 / Object.keys(Filters).length * 2 * Math.PI) * 64) + 'px',
+						left: (Math.cos(size * 1.0 / Object.keys(Filters).length * 2 * Math.PI) * 64) + 'px'
+					});
+					this.$cursor.hide();
+					this.$cursor.width(size * 8 + "px").height(size * 8 + "px");
+					this.$cursor.css('border-radius', size * 8 + 'px');
+					this.position = { x: 0, y: 0 };
+					
+					this.$configurator = $('<div id="' + name + '" />');
+					
+					this.ref('enabled', true);
+					this.enabled$subscribe(this.enabledChanged.bind(this));
+					
+					var kbdchar = kbdletter.charCodeAt(0);
+					$(window).keypress(function(e) {
+						if(e.which == kbdchar) {
+							that.enabled = !that.enabled;
+							$('#check' + that.name + 'filter').prop('checked', that.enabled);
+						}
+					});
+					
+					// Make the configurator's title
+					var $conftitle = $('<h2/>');
+					$('<span>&nbsp;</span>').css('background-color', color).appendTo($conftitle);
+					var $checkbox = $('<input id="check' + this.name + 'filter" type="checkbox" />');
+					$checkbox.appendTo($conftitle);
+					$('<label for="check' + this.name + 'filter" />').text(this.filterClass.description + ' (' + kbdletter + ')').appendTo($conftitle);
+					$checkbox.change(function() {
+						that.enabled = (this.checked);
+					});
+
+					$conftitle.appendTo(this.$configurator);
+					
+					this.configuration = {};
+					
+					var $filter = $('<ul/>');
+					
+					var that = this;
+					function makeUpdateFn(n) {
+						return function(v) {
+							that.configuration[n] = v;
+							that.configurationChanged();
+						};
+					}
+					
+					for(var p in this.filterClass.parameters) {
+						var param = this.filterClass.parameters[p];
+						var defvalue = undefined;
+						if(typeof param['def'] != typeof undefined) {
+							defvalue = param.def;
+						}
+						// Create a ref for this parameter that will notify any change.
+						this.configuration[param.name] = defvalue;
+						
+						// Create the configurator part for this parameter, if it's a number
+						if(typeof param['values'] === typeof undefined && param['optional'] != true) {
+							var paramid = 'filter-' + this.name + '-param-' + param.name;
+							var $param = $('<li id="' + paramid + '" />');
+							//var $value = $('<span/>').addClass('tanglify_value');
+							var $value = $('<input type="number" class="tanglify_value"/>,<input type="range" class="tanglify_value"/>');							
+							var $tanglified = $('<span/>').text(param.description + ': ').append($value).append('<input type="button" value="reset" class="tanglify_reset" />');
+							var that = this;
+							
+							var tangloptions = {
+								updateFn: makeUpdateFn(param.name)
+							}
+							if(typeof param['def'] != typeof undefined) {
+								tangloptions.defaultValue = param['def'];
+							}
+							if(typeof param['min'] != typeof undefined && typeof param['max'] != typeof undefined) {
+								tangloptions.min = param['min'];
+								tangloptions.max = param['max'];
+								tangloptions.step = 1;
+								var width = tangloptions.max - tangloptions.min;
+								if(width <= 1) {
+									tangloptions.step = 0.01;
+								}
+							}
+							if(typeof param['step'] != typeof undefined) {
+								tangloptions.step = param['step'];
+							}
+							$tanglified.tanglify(tangloptions);
+							this.$configurator.append($param.append($tanglified));
+						}
+					}
+					
+					this.configurationChanged();
+					this.reposition();
+					
+					return this;
+				}
+				FilterConfiguration.prototype.configurationChanged = function() {
+					var parameters = [];
+					for(var p in this.filterClass.parameters) {
+						var param = this.filterClass.parameters[p];
+						parameters.push(this.configuration[param.name]);
+					}
+					this.filterX = construct(this.filterClass, parameters);
+					this.filterY = construct(this.filterClass, parameters);
+				}
+				FilterConfiguration.prototype.reposition = function() {
+					this.$cursor.offset({
+						left: this.position.x - this.$cursor.outerWidth() * 0.5,
+						top: this.position.y - this.$cursor.outerHeight() * 0.5
+					});
+				}
+				FilterConfiguration.prototype.update = function(x, y) {					
+					if(this.filterX) {
+						this.position.x = this.filterX.filter(x, new Date().getTime() * 0.001);
+						this.currentX = this.position.x;
+					}
+					if(this.filterY) {
+						this.position.y = this.filterY.filter(y, new Date().getTime() * 0.001);
+						this.currentY = this.position.y;
+					}
+					
+					if(this.enabled)
+						this.reposition(); 
+				}
+				FilterConfiguration.prototype.enabledChanged = function(enabled) {
+					if(!enabled) {
+						this.$cursor.fadeOut('fast');
+					} else {
+						this.$cursor.fadeIn('fast');
+					}
+				}
+				
+				
+				function FilterDemo() {
+					var that = this;
+					this.$playground = $('#playground');
+					this.$configurator = $('#configurator');
+					this.$point = $('#point');
+					
+					this.ref('x', 0);
+					this.ref('y', 0);
+					this.ref('noisyX', 0);
+					this.ref('noisyY', 0);
+					
+					// State variables
+					this.ref('SNR', 50);
+					this.SNR$subscribe(this.updateNoiseFunction.bind(this));
+					this.ref('stopped', false);
+					this.stopped$subscribe(this.updateTimer.bind(this));
+					this.ref('frequency', 25);
+					this.frequency$subscribe(this.updateTimer.bind(this));
+					
+					// Setup the SNR setting in the configurator
+					var $SNRsetting = $('<span>SNR (dB): <span class="tanglify_value"/></span>').append('<input type="number" class="tanglify_value"/>,<input type="range" class="tanglify_value"/>').append('<input type="button" value="reset" class="tanglify_reset" />').tanglify({
+						updateFn: function(x) {
+							that.SNR = x;
+						}
+					});
+					//configurator dom
+					this.$configurator.append($('<h1/>').text('Input')).append($('<h2><span style="background-color: black">&nbsp;</span> Signal</h2><h2><span style="background-color: #EEE">&nbsp;</span> Noisy signal</h2>')).append($('<ul/>').append($('<li/>').append($SNRsetting))).append($('<h1/>').text('Filters'));
+					
+					// Setup the filters
+					this.colors = ["#ff5252", "#ff9752", "#0fa5f2", "#0ebb52", "#920bfe", "#52f3ff", "#52c5a", "#5297ff", "#6952ff", "#ff52f3", "#ff5280", "#ff8052", "#ffae52", "#fff352", "#52ff52", "#52ffdc", "#52dcff", "#52aeff", "#5280ff", "#c552ff", "#a52ae"];
+					var keys = ['s','d','f','g','h','j','k','l'];
+					this.filters = [];
+					var c = 0;
+					for(var i in Filters) {
+						var f = Filters[i];
+						var filter = new FilterConfiguration(i, this.colors[c++], c, keys[c-1]);
+						this.filters.push(filter);
+						this.$playground.append(filter.$cursor);
+						this.$configurator.append(filter.$configurator);
+						$('#' + i).find('input').trigger('click');						
+					}
+
+					// Setup the noise function
+					this.updateNoiseFunction();
+					$(window).resize(this.updateNoiseFunction);
+					
+					// Setup the pointer input
+					this.$playground.mousemove(function(e) {
+						if(!that.stopped) {
+							that.x = e.pageX - that.$playground.offset().left;
+							that.y = e.pageY - that.$playground.offset().top;
+						}
+					});
+					this.$playground.mouseout(function() {
+						that.recenter();
+					});
+					
+					// Run everything
+					this.recenter();
+					this.updateTimer();
+				}
+				FilterDemo.prototype.recenter = function() {
+					// this.x = this.$playground.width() * 0.5;
+					// this.y = this.$playground.height() * 0.5;
+					// this.update();
+				}
+				FilterDemo.prototype.updateNoiseFunction = function() {
+					this.noiseFunction = makeNoiseWithSNR(this.SNR, Math.max($('#playground').width(), $('#playground').height()));
+				}
+				FilterDemo.prototype.updateNoise = function() {
+					this.noisyX = this.x + this.noiseFunction();
+					this.noisyY = this.y + this.noiseFunction();
+					this.$point.offset({
+						left: this.noisyX - this.$point.outerWidth() * 0.5,
+						top: this.noisyY - this.$point.outerHeight() * 0.5
+					});
+				}
+				FilterDemo.prototype.update = function() {
+					for(var f in this.filters) {
+						var filter = this.filters[f];
+						filter.update(this.noisyX, this.noisyY);
+					}
+				}
+				FilterDemo.prototype.updateTimer = function() {
+					if(this.timer !== undefined) {
+						clearInterval(this.timer);
+						this.timer = undefined;
+					}
+					if(!this.stopped) {
+						this.timer = setInterval(this.tick.bind(this), 1.0 / this.frequency * 1000);
+					}
+				}
+				FilterDemo.prototype.tick = function() {
+					this.updateNoise();
+					this.update();
+				}
+				
+				window.filterDemo = new FilterDemo();
+			});
+			
+			$(function() {
+				function TimeSeriesPlotter() {
+					var that = this;
+					this.startTime = 0;//new Date().getTime();
+					
+					this.$timeseries = $('#timeseries');
+					this.series = [
+						{ // pure signal
+							color: 'rgba(0,0,0,0.5)',
+							width: 3,
+							data: [],
+							name: 'Base signal'
+						},
+						{ // noisy signal
+							color: 'rgba(255, 255, 255, 0.5)',
+							data: [],
+							name: 'Noisy signal'
+						}
+					];
+					for(var i=0; i<filterDemo.filters.length; ++i) {
+						var filter = filterDemo.filters[i];
+						this.series.push({
+							color: filter.color,
+							data: [],
+							name: filter.filterClass.description,
+							disabled: true
+						});
+					}
+					
+					this.ref('stopped', false);
+					this.timer = setInterval(this.tick.bind(this), 1.0 / 20 * 1000);
+					this.maxPoints = 100;
+					this.alreadyRendered = false;
+					
+					$(window).resize(this.onResize.bind(this));
+					$(document).keydown(function(e) {
+						if(e.which === 80) {
+							that.stopped = !that.stopped;
+							if(that.stopped) {
+								$('#paused').addClass('active');
+								$('#unpaused').removeClass('active');
+							} else {
+								$('#unpaused').addClass('active');
+								$('#paused').removeClass('active');
+							}
+						}
+					});
+					
+					$('#hzoomtgl').tanglify({
+						min: 0.01,
+						max: 0.995,
+						step: 0.005,
+						defaultValue: 1-0.0964,
+						updateFn: function(x) {
+							var fx = Math.floor(4 + (1-x) * (1000 - 4));
+							that.maxPoints = fx;
+						}
+					});
+					this.zoomLevel = 0.5;
+					$('#vzoomtgl').tanglify({
+						min: 0.01,
+						max: 0.995,
+						step: 0.005,
+						defaultValue: 1-1.0 / 3.0,
+						updateFn: function(x) {
+							var fx = (1-x) * 1.5;
+							that.zoomLevel = fx;
+						}
+					});
+				}
+				function distr(x, y) {
+					return y;//return Math.abs(x - y);
+				}
+				function dist(x, y) {
+					return Math.sqrt(x*x + y*y);
+				}
+				TimeSeriesPlotter.prototype.onResize = function() {
+					this.plot.width = this.$timeseries.width();
+					this.plot.height = this.$timeseries.height();
+					this.plot.vis.attr('width', this.$timeseries.width());
+					this.plot.vis.attr('height', this.$timeseries.height());
+					this.plot.update();
+				};
+				TimeSeriesPlotter.prototype.tick = function() {
+					if(!this.stopped) {
+						// Shave the data
+						while(this.series[0].data.length > this.maxPoints) { this.series[0].data.shift();}
+						while(this.series[1].data.length > this.maxPoints) { this.series[1].data.shift();}					
+						var w = filterDemo.$playground.width();
+						var h = filterDemo.$playground.height();
+						var now = this.startTime++;//(new Date().getTime() - this.startTime) * 0.01;
+						var reference = dist(filterDemo.x / w, filterDemo.y / h);
+						// Update the data
+						this.series[0].data.push({x:now, y:distr(reference, reference)});
+						this.series[1].data.push({x:now, y:distr(reference, dist(filterDemo.noisyX / w, filterDemo.noisyY / h))});
+						for(var i=0; i<filterDemo.filters.length; ++i) {
+							var filter = filterDemo.filters[i];
+							while(this.series[i+2].data.length > this.maxPoints) { this.series[i+2].data.shift();}
+							this.series[i+2].data.push({x:now, y:distr(reference, dist(filter.currentX / w, filter.currentY / h))});
+							this.series[i+2].disabled = !filter.enabled;
+						}
+					}
+					// Update the plot
+					if(this.series.length > 0 && this.series[0].data.length > 0) {						
+						if(!this.alreadyRendered) {
+							this.alreadyRendered = true;
+							this.plot = new Rickshaw.Graph({
+								element: this.$timeseries[0],
+								renderer: 'line',
+								series: this.series,
+								min: 0,
+								max: 1.5
+							});
+							// this.plot.renderer.unstack = true;
+							this.plot.render();
+							
+							var hoverDetail = new Rickshaw.Graph.HoverDetail( {
+							    graph: this.plot,
+							    xFormatter: function(x) { return "+"+(x*100).toFixed(3)+"ms" },
+							    yFormatter: function(y) { return (y*100).toFixed(3); }
+							});
+						} else {
+							this.plot.min = Math.max(0, this.series[0].data[this.series[0].data.length - 1].y - this.zoomLevel);
+							this.plot.max = Math.min(1.5, this.series[0].data[this.series[0].data.length - 1].y + this.zoomLevel);
+							this.plot.update();
+						}
+					}
+				}
+				
+				window.timeSeriesPlotter = new TimeSeriesPlotter();
+			});
+		</script>
+		<style>
+			html, body {
+				margin: 0;
+				height: 75%;
+				
+				overflow-x: hidden;
+				-webkit-touch-callout: none;
+				-webkit-user-select: none;
+				-khtml-user-select: none;
+				-moz-user-select: none;
+				-ms-user-select: none;
+				user-select: none;
+			}
+			body {
+				font-family: 'Helvetica Neue', Helvetica, Arial, sans;
+				color: #565656;
+				background-color: #444;
+			}
+			body::-webkit-scrollbar { width: 0 !important }
+			#configurator {
+				height: 65%;
+				position: absolute;
+				width: 30%;
+				right: 0;
+				background-color: #565656;
+				color: #e0e0e0;
+				font-size: 8pt;
+				z-index: 2;
+				overflow: auto;
+				overflow-x: hidden;
+			}
+			#configurator ul {
+				padding: 0;
+			}
+			#configurator li {
+				padding-left: 2em;
+				list-style-type: none;
+			}
+			#configurator h1 {
+				font-size: 12pt;
+				padding-left: 3pt;
+			}
+			#configurator h2 {
+				font-size: 10pt;
+			}
+			#playground {
+				position: absolute;
+				width: 70%;
+				height: 65%;
+				cursor: crosshair;
+				background-color: #e0e0e0;
+			}
+			#point {
+				position: absolute;
+				left: 0px;
+				top: 0px;
+				width: 4px;
+				height: 4px;
+				border-radius: 4px;
+				background-color: #FFFFFF;
+				border: 1px solid black;
+			}
+			
+			.tanglify_value {
+				font-weight: bold;
+			}
+			.filterCursor {
+				border-radius: 16px;
+				position: absolute;
+				left: 0px;
+				top: 0px;
+				width: 16px;
+				height: 16px;
+				border: 5px solid black;
+				font-size: 10px;
+			}
+			.filterCursor span {
+				display: block;
+				width: 50px;
+				position: relative;
+			}
+			
+			#timeseries {
+				position: absolute;
+				bottom: 0;
+				height: 35%;
+				width: 100%;
+				background-color: #888;
+			}
+			
+			#timeseries .detail {
+				background-color: rgba(0,0,0,0.5);
+				font-size: 10px;
+				font-weight: bold;
+				padding: 5px;
+				color: white;
+				position: fixed;
+				bottom: 30px;
+				left: -20px;
+				pointer-events: none;
+				border-radius: 5px;
+				z-index: 1000;
+			}
+			
+			#timeseries .detail.inactive {
+				display: none;
+			}
+			
+			#det {
+				position: absolute;
+				bottom: 10px;
+				left: 10px;
+				width: 200px;
+				color: white;
+				z-index: 100;
+				font-size: 10px;
+			}
+			
+			#det .active {
+				color: #ddd;
+			}
+			
+			#det .inactive {
+			}
+		</style>
+	</head>
+	<body>
+		<div id="playground">
+			<div id="point"></div>
+		</div>
+		<div id="configurator">
+		</div>
+		<div id="det">
+			<strong>p</strong> <span id="paused">pause</span>/<span id="unpaused" class="active">run</span>
+			<br/>
+			<span id="hzoomtgl">lookahead: <span class="tanglify_value">100</span></span>
+			<br/>
+			<span id="vzoomtgl">vzoom: <span class="tanglify_value">0.5</span></span>
+			<br/>
+			</div>
+		<div id="timeseries">
+		</div>
+	</body>
+</html>
