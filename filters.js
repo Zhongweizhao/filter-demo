@@ -233,12 +233,12 @@
 	JitterEnergyFilter.description = "Jitter-Energy";
 	JitterEnergyFilter.calibratable = true;
 	JitterEnergyFilter.parameters = [
-		{ name: 'magnitudeThreshold', description: 'Magnitude threshold (px)', min: 0.1, max: 200, def: 10, step: 0.1 },
+		{ name: 'magnitudeThreshold', description: 'Magnitude threshold (px)', min: 0.1, max: 200, def: 25, step: 0.1 },
 		{ name: 'energyGain', description: 'Energy gain', min: 0.1, max: 50, def: 5.0, step: 0.1 },
-		{ name: 'decayFactor', description: 'Decay factor', min: 0.5, max: 0.999, def: 0.85, step: 0.001 },
-		{ name: 'fcMin', description: 'fc min', min: 0.1, max: 10, def: 1.0, step: 0.05 },
+		{ name: 'decayFactor', description: 'Decay factor', min: 0.5, max: 0.999, def: 0.99, step: 0.001 },
+		{ name: 'fcMin', description: 'fc min', min: 0.1, max: 10, def: 0.3, step: 0.05 },
 		{ name: 'fcMax', description: 'fc max', min: 1.0, max: 50, def: 15.0, step: 0.1 },
-		{ name: 'energyCeiling', description: 'Energy ceiling', min: 0.01, max: 5000, def: 120, step: 0.1 }
+		{ name: 'energyCeiling', description: 'Energy ceiling', min: 0.01, max: 50000, def: 500, step: 1 }
 	];
 	JitterEnergyFilter.prototype.alpha = function(cutoff, dt) {
 		var tau = 1.0 / (2 * Math.PI * cutoff);

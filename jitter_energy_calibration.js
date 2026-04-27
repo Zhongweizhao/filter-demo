@@ -72,9 +72,11 @@
 			var eY = steadyStateEnergy(deltasY, gain, decay, threshold);
 			var eSs = 0.5 * (eX + eY);
 
-			// Set ceiling at ~40% of steady state so jitter saturates (blend→1)
-			// quickly and stays pinned despite normal sample-to-sample variance.
-			var ceiling = Math.max(eSs * 0.4, 0.01);
+			// Set ceiling well below steady state so the energy clamp pins blend
+			// at 1 even during the natural per-frame variance in reversal counts.
+			// Without this margin, the quadratic blend amplifies tiny dips in E
+			// into spikes in fc, leaking jitter through during stillness.
+			var ceiling = Math.max(eSs * 0.2, 0.01);
 
 			setParam(f, 'magnitudeThreshold', threshold);
 			setParam(f, 'energyCeiling', ceiling);
